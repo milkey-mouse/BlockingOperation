@@ -72,15 +72,19 @@ class MCInterop:
             time.sleep(0.025)
 
     def keypress(self, key):
+        if key is None: return
         win32api.keybd_event(key, 0, 0, 0)
 
     def keydown(self, key):
+        if key is None: return
         win32api.keybd_event(key, 0, win32con.KEYEVENTF_EXTENDEDKEY | 0, 0)
 
     def keyup(self, key):
+        if key is None: return
         win32api.keybd_event(key, 0, win32con.KEYEVENTF_EXTENDEDKEY | win32con.KEYEVENTF_KEYUP, 0)
 
     def send_extended_key(self, key, sleep=None):
+        if key is None: return
         self.keydown(key)
         if sleep:
             time.sleep(sleep)
@@ -173,9 +177,10 @@ class MCInterop:
             raise Exception("Couldn't get an update... :(")
 
     def patch_hole(self):
-        self.send_extended_key(win32con.VK_SPACE, 0.01)
-        time.sleep(0.25)
+        self.send_extended_key(win32con.VK_SPACE, 0.05)
+        time.sleep(0.22)
         self.rightclick()
+        time.sleep(0.15)
 
     def move_to(self, axis, value, comparator, shift=True, autojump=True, update=None, key=0x57, settop=None):
         if shift:
@@ -188,6 +193,7 @@ class MCInterop:
             pass
         starting_y = settop if settop else self.player_y
         falls = 0
+        ofails = 0
         oldlook = None
         while True:
             try:
@@ -198,6 +204,7 @@ class MCInterop:
                 update()
             if axis != "y" and autojump and self.player_y < starting_y:
                 if self.player_y < (starting_y - 1.5):
+                    self.keyup(key)
                     print "Fell in a hole, trying to stack up..."
                     oy = self.player_y
                     self.better_sendkeys("5")
@@ -210,20 +217,30 @@ class MCInterop:
                         self.better_sendkeys("2")
                         self.move_look(self.player_facing_lr, oldlook, ignore_fail=True)
                         oldlook = None
+                        self.keydown(key)
+                        ofails = 0
                         print ":)"
                     elif self.player_y == oy:
-                        raise Exception("Fell in a hole... :(")
+                        ofails += 1
+                        if ofails > 10:
+                            raise Exception("Fell in a hole... :(")
                 else:
                     print "Fell in a hole, jumping out."
                     self.send_extended_key(0x20, 0.1)  # jump (space)
                     falls += 1
+                    if falls > 1:
+                        print "(" + str(falls) + "/8 tries)"
                     if falls >= 8:
                         self.move_look(self.player_facing_lr, 90.0, ignore_fail=True)
+                        self.better_sendkeys("5")
+                        time.sleep(0.1)
                         self.patch_hole()
+                        self.better_sendkeys("2")
+                        time.sleep(0.1)
                         self.move_look(self.player_facing_lr, 0.0, ignore_fail=True)
                         falls = 0
             else:
-                falls = 0
+                falls -= 0.25
             if axis == "x":
                 if comparator == "lt":
                     if self.player_x <= value:
@@ -428,9 +445,11 @@ def mine_to_start_wood():
     while mci.player_x <= -109.700:
         mci.send_extended_key(0x41, 0.05)  # A
         mci.update()
-    while mci.player_z <= -608.600:
+    while mci.player_z <= -608.650:
         print "moo"
-        mci.send_extended_key(0x57, 0.05)  # W
+        mci.keydown(win32con.VK_SHIFT)
+        mci.send_extended_key(0x57, 0.045)  # W
+        mci.keyup(win32con.VK_SHIFT)
         mci.update()
     print "done doing stuff"
     # mci.keyup(win32con.VK_SHIFT)
@@ -468,27 +487,111 @@ def mine_channel_wood():
     def path_align():
         if mci.player_x > -109.400:
             mci.send_extended_key(0x41, 0.04)
-        return mci.axe_damaged() and mci.player_y != 59.000  # no resets
+        return not (mci.axe_damaged() or mci.player_y == 59.000)  # no resets
 
-    mci.send_extended_key(0x57, 1.0)
+    mci.send_extended_key(0x57, 0.5)
     mci.update()
     if mci.player_z < -608.701:
+        mci.move_to("z", -608.500, "gt", shift=False, key=0x53)
         print "already done"
     else:
         mci.mousedown()
         mci.move_to("z", -702, "lt", shift=False, update=path_align)
         mci.mouseup()
         if mci.axe_damaged() or mci.player_y == 59.000:
-            return
+            raise Exception("Axe damaged")
 
+def replace_axe():
+    mci.better_sendkeys("/u home")
+    time.sleep(0.075)
+    mci.better_sendkeys("\n")
+    time.sleep(1.5)
+    mci.move_look(90, 0, ignore_fail=True)
+    mci.move_to("x", 24995, "lt")
+    mci.move_look(-10.0, 0.0, ignore_fail=True)
+    mci.move_to("z", 1406, "gt", shift=False)
+    mci.keydown(win32con.VK_SHIFT)
+    mci.update()
+    while mci.player_z > 1406.600:
+        mci.send_extended_key(0x53, 0.04)  # S
+        mci.update()
+    mci.keyup(win32con.VK_SHIFT)
+    mci.move_look(90.0, 0.0, ignore_fail=True)
+    mci.move_to("x", 24991.300, "lt")
+    mci.move_look(1.0, 85.0, ignore_fail=True)
+    mci.move_to("z", 1410, "gt", autojump=False)
+    mci.update()
+    while mci.player_z > 1410:
+        mci.send_extended_key(0x53, 0.05)  # S
+        mci.update()
+    mci.better_sendkeys("2")
+    time.sleep(0.25)
+    mci.better_sendkeys("q")
+    time.sleep(0.25)
+    try:
+        mci.move_to("z", 1412.500, "gt", autojump=False, shift=False)
+    except:
+        pass
+    time.sleep(1)
+
+def sell_wood():
+    mci.better_sendkeys("/")
+    time.sleep(0.1)
+    mci.better_sendkeys("warp wo")
+    time.sleep(0.1)
+    mci.better_sendkeys("od")
+    time.sleep(0.5)
+    mci.better_sendkeys("\n")
+    time.sleep(2)
+    mci.keyup(0x57)
+    mci.move_look(180.0, 0.0, ignore_fail=True)
+    mci.move_to("z", -667, "lt", shift=False, autojump=False)
+    mci.send_extended_key(0x41, 0.1)  # for some reason this fixes it
+    mci.keydown(0x41)
+    mci.move_to("x", -65.5, "lt", key=None, shift=False, autojump=False)
+    mci.keyup(0x41)
+    mci.update()
+    for tpos in [-65.5, -64.5, -63.5, -61.5, -60.5, -59.5]:
+        mci.keydown(win32con.VK_SHIFT)
+        while mci.player_x < tpos:
+            mci.send_extended_key(0x44, 0.075)  # D
+            mci.update()
+        mci.keyup(win32con.VK_SHIFT)
+        time.sleep(0.1)
+        for i in xrange(20):
+            mci.rightclick()
+            time.sleep(0.25)
+    time.sleep(0.5)
+
+def mine_pocket_wood():
+    mci.move_look(-90.0, 30.0, ignore_fail=True)
+    mci.mousedown()
+    mci.move_to("x", mci.player_x + 1.0, "gt", shift=False)
+    mci.mouseup()
+    mci.update()
+    if mci.player_z > -608.700:
+        mci.move_look(-179.0, 30, ignore_fail=True)
+    else:
+        mci.move_look(1.0, 30, ignore_fail=True)
 
 time.sleep(2)
 start = time.time()
 grabs = 0.0
 mci = MCInterop()
 mci.update()
-while not mci.axe_damaged():
-    mine_to_start_wood()
-    mine_channel_wood()
-    deposit()
-sys.exit()
+while True:
+    while not mci.axe_damaged():
+        try:
+            mine_to_start_wood()
+            mine_channel_wood()
+            for i in xrange(9):
+                mine_pocket_wood()
+                sys.exit()
+        except:
+            pass
+        try:
+            sell_wood()
+            deposit()
+        except:
+            pass
+    replace_axe()
